@@ -181,21 +181,203 @@
   font-weight: 500;
 }
 
-/* —— Player grid —— */
+.loading-msg {
+  text-align: center;
+  color: var(--color-ink-soft);
+  font-size: 1.05rem;
+}
 
-.player-grid {
+/* —— Auth —— */
+
+.auth-panel {
+  width: min(28rem, 100%);
+  margin: 0 auto;
+  padding: 1.35rem 1.15rem 1.25rem;
+  background:
+    linear-gradient(165deg, #fff9ef 0%, var(--color-parchment) 45%, var(--color-parchment-deep) 100%);
+  border: 3px solid var(--color-wood);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 248, 230, 0.7),
+    0 8px 0 rgba(92, 58, 30, 0.18);
+  animation: fade-rise 0.7s ease-out both;
+}
+
+.auth-panel__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  color: var(--color-wood-dark);
+  text-align: center;
+}
+
+.auth-panel__desc {
+  margin: 0 0 1rem;
+  color: var(--color-ink-soft);
+  text-align: center;
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.auth-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.auth-panel__field label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-wood-dark);
+}
+
+.auth-panel__error {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 4px;
+  background: #fde8e4;
+  border: 1px solid #e0a090;
+  color: #8a2e22;
+  font-size: 0.9rem;
+}
+
+.auth-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.auth-panel__actions .btn {
+  flex: 1 1 8rem;
+  min-height: 3rem;
+}
+
+.auth-panel__roster {
+  margin-top: 1.15rem;
+  padding-top: 1rem;
+  border-top: 2px dashed #c4a882;
+}
+
+.auth-panel__roster-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+  color: var(--color-wood-dark);
+}
+
+.auth-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.auth-panel__list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  background: rgba(255, 253, 248, 0.8);
+  border: 1px solid #d4c0a0;
+  border-radius: 4px;
+  font-size: 0.92rem;
+}
+
+.auth-panel__status {
+  color: var(--color-ink-soft);
+  font-size: 0.85rem;
+}
+
+.auth-panel__empty,
+.auth-panel__slots {
+  margin: 0.5rem 0 0;
+  color: var(--color-ink-soft);
+  font-size: 0.88rem;
+}
+
+/* —— Solo layout —— */
+
+.solo-layout {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
+  width: min(720px, 100%);
+  margin: 0 auto;
 }
 
 @media (min-width: 768px) {
-  .player-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.25rem;
-    align-items: stretch;
+  .solo-layout {
+    grid-template-columns: 1.2fr 0.9fr;
+    align-items: start;
   }
 }
+
+.player-card--solo {
+  width: 100%;
+}
+
+.roster-side {
+  padding: 1.1rem 1rem;
+  background:
+    linear-gradient(165deg, #fff9ef 0%, var(--color-parchment) 100%);
+  border: 3px solid var(--color-wood);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px rgba(255, 248, 230, 0.7);
+}
+
+.roster-side__title {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--color-wood-dark);
+}
+
+.roster-side__summary {
+  margin: 0 0 0.75rem;
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+}
+
+.roster-side__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.roster-side__list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d4c0a0;
+  border-radius: 4px;
+  background: rgba(255, 253, 248, 0.75);
+  font-size: 0.9rem;
+}
+
+.roster-side__hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--color-ink-soft);
+  line-height: 1.45;
+}
+
+.result-panel__privacy {
+  position: relative;
+  margin: 0.85rem 0 0;
+  text-align: center;
+  color: var(--color-ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* —— Player cards —— */
 
 .player-card {
   display: flex;

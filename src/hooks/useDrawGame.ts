@@ -1,45 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  buildSpinFrames,
-  displayName,
-  formatShareText,
-  pickRandomJob,
-} from '../lib/jobs'
-import {
-  createInitialState,
-  loadState,
-  saveState,
-} from '../lib/storage'
-import type { Job, PersistedState, PlayerId } from '../types'
+import * as api from '../lib/api'
+import { buildSpinFrames, formatOwnResultText } from '../lib/jobs'
+import { clearAuth, loadAuth, saveAuth } from '../lib/storage'
+import type { Job, PrivatePlayer, PublicSession } from '../types'
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
+
+type Phase = 'loading' | 'auth' | 'ready'
 
 export function useDrawGame() {
   const reducedMotion = usePrefersReducedMotion()
-  const [state, setState] = useState<PersistedState>(() => loadState())
-  const [drawingPlayerId, setDrawingPlayerId] = useState<PlayerId | null>(null)
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [token, setToken] = useState<string | null>(null)
+  const [me, setMe] = useState<PrivatePlayer | null>(null)
+  const [session, setSession] = useState<PublicSession | null>(null)
+  const [nameInput, setNameInput] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [drawing, setDrawing] = useState(false)
   const [spinJob, setSpinJob] = useState<Job | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const timersRef = useRef<number[]>([])
   const toastTimerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    saveState(state)
-  }, [state])
-
-  useEffect(() => {
-    return () => {
-      timersRef.current.forEach((id) => window.clearTimeout(id))
-      if (toastTimerRef.current !== null) {
-        window.clearTimeout(toastTimerRef.current)
-      }
-    }
-  }, [])
-
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach((id) => window.clearTimeout(id))
-    timersRef.current = []
-  }, [])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -52,91 +34,192 @@ export function useDrawGame() {
     }, 2200)
   }, [])
 
-  const isLocked = drawingPlayerId !== null
-  const allDone = state.players.every((p) => p.job !== null)
-
-  const setPlayerName = useCallback((id: PlayerId, name: string) => {
-    setState((prev) => ({
-      ...prev,
-      players: prev.players.map((p) =>
-        p.id === id ? { ...p, name } : p,
-      ),
-    }))
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach((id) => window.clearTimeout(id))
+    timersRef.current = []
   }, [])
 
-  const drawForPlayer = useCallback(
-    (id: PlayerId) => {
-      const player = state.players.find((p) => p.id === id)
-      if (!player || player.job !== null || isLocked) return
-      if (state.remainingJobs.length === 0) return
-
-      const { job, nextRemaining } = pickRandomJob(state.remainingJobs)
-      setDrawingPlayerId(id)
+  useEffect(() => {
+    return () => {
       clearTimers()
-
-      const frames = buildSpinFrames(job, reducedMotion)
-      let cumulative = 0
-
-      frames.forEach((frame, index) => {
-        cumulative += frame.delayMs
-        const timer = window.setTimeout(() => {
-          setSpinJob(frame.job)
-          const isLast = index === frames.length - 1
-          if (isLast) {
-            setState((prev) => ({
-              ...prev,
-              remainingJobs: nextRemaining,
-              players: prev.players.map((p) =>
-                p.id === id ? { ...p, job } : p,
-              ),
-            }))
-            setDrawingPlayerId(null)
-            setSpinJob(null)
-          }
-        }, cumulative)
-        timersRef.current.push(timer)
-      })
-    },
-    [state.players, state.remainingJobs, isLocked, reducedMotion, clearTimers],
-  )
-
-  const requestReset = useCallback(() => {
-    if (isLocked) return
-    setConfirmReset(true)
-  }, [isLocked])
-
-  const cancelReset = useCallback(() => {
-    setConfirmReset(false)
-  }, [])
-
-  const confirmResetAction = useCallback(() => {
-    clearTimers()
-    setDrawingPlayerId(null)
-    setSpinJob(null)
-    setConfirmReset(false)
-    setState((prev) => {
-      const next = createInitialState()
-      next.players = next.players.map((p, i) => ({
-        ...p,
-        name: prev.players[i]?.name ?? '',
-      }))
-      return next
-    })
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
   }, [clearTimers])
 
-  const copyResults = useCallback(async () => {
-    if (!allDone) return
-    const lines = state.players.map((p) => ({
-      name: displayName(p.name, p.id),
-      job: p.job!,
-    }))
-    const text = formatShareText(lines)
+  const applyAuth = useCallback(
+    (nextToken: string, nextMe: PrivatePlayer, nextSession: PublicSession) => {
+      setToken(nextToken)
+      setMe(nextMe)
+      setSession(nextSession)
+      saveAuth(nextToken, nextMe.name)
+      setPhase('ready')
+      setError(null)
+    },
+    [],
+  )
 
+  const refreshPublic = useCallback(async () => {
+    const res = await api.fetchSession()
+    setSession(res.session)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function boot() {
+      try {
+        const saved = loadAuth()
+        if (saved) {
+          try {
+            const res = await api.fetchMe(saved.token)
+            if (cancelled) return
+            applyAuth(saved.token, res.me, res.session)
+            return
+          } catch {
+            clearAuth()
+          }
+        }
+        const publicSession = await api.fetchSession()
+        if (cancelled) return
+        setSession(publicSession.session)
+        setPhase('auth')
+      } catch {
+        if (cancelled) return
+        setError('無法連線到伺服器，請稍後再試')
+        setPhase('auth')
+      }
+    }
+
+    void boot()
+    return () => {
+      cancelled = true
+    }
+  }, [applyAuth])
+
+  // Soft-refresh roster while logged in (so you see others join/draw status).
+  useEffect(() => {
+    if (phase !== 'ready' || !token) return
+    const id = window.setInterval(() => {
+      void api
+        .fetchMe(token)
+        .then((res) => {
+          setMe(res.me)
+          setSession(res.session)
+        })
+        .catch(() => {
+          /* ignore transient errors */
+        })
+    }, 8000)
+    return () => window.clearInterval(id)
+  }, [phase, token])
+
+  const handleRegister = useCallback(async () => {
+    setAuthBusy(true)
+    setError(null)
+    try {
+      const res = await api.register(nameInput)
+      applyAuth(res.token, res.me, res.session)
+      showToast('註冊成功！')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '註冊失敗')
+    } finally {
+      setAuthBusy(false)
+    }
+  }, [nameInput, applyAuth, showToast])
+
+  const handleLogin = useCallback(async () => {
+    setAuthBusy(true)
+    setError(null)
+    try {
+      const res = await api.login(nameInput)
+      applyAuth(res.token, res.me, res.session)
+      showToast(`歡迎回來，${res.me.name}！`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '登入失敗')
+    } finally {
+      setAuthBusy(false)
+    }
+  }, [nameInput, applyAuth, showToast])
+
+  const logout = useCallback(() => {
+    clearTimers()
+    clearAuth()
+    setToken(null)
+    setMe(null)
+    setDrawing(false)
+    setSpinJob(null)
+    setPhase('auth')
+    void refreshPublic()
+  }, [clearTimers, refreshPublic])
+
+  const draw = useCallback(async () => {
+    if (!token || !me || me.job !== null || drawing) return
+    setDrawing(true)
+    setError(null)
+    clearTimers()
+
+    try {
+      const res = await api.draw(token)
+      const finalJob = res.me.job
+      if (!finalJob) throw new Error('抽籤失敗')
+
+      // Keep public session (without revealing others' jobs).
+      setSession(res.session)
+
+      const frames = buildSpinFrames(finalJob, reducedMotion)
+      let cumulative = 0
+
+      await new Promise<void>((resolve) => {
+        frames.forEach((frame, index) => {
+          cumulative += frame.delayMs
+          const timer = window.setTimeout(() => {
+            setSpinJob(frame.job)
+            if (index === frames.length - 1) {
+              setMe(res.me)
+              setDrawing(false)
+              setSpinJob(null)
+              resolve()
+            }
+          }, cumulative)
+          timersRef.current.push(timer)
+        })
+      })
+    } catch (e) {
+      setDrawing(false)
+      setSpinJob(null)
+      setError(e instanceof Error ? e.message : '抽籤失敗')
+    }
+  }, [token, me, drawing, reducedMotion, clearTimers])
+
+  const requestReset = useCallback(() => {
+    if (drawing) return
+    setConfirmReset(true)
+  }, [drawing])
+
+  const cancelReset = useCallback(() => setConfirmReset(false), [])
+
+  const confirmResetAction = useCallback(async () => {
+    if (!token) return
+    setConfirmReset(false)
+    try {
+      const res = await api.resetRound(token)
+      setMe(res.me)
+      setSession(res.session)
+      showToast('已重新開始抽籤')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '重置失敗')
+    }
+  }, [token, showToast])
+
+  const copyResults = useCallback(async () => {
+    if (!me?.job) return
+    const text = formatOwnResultText(me.name, me.job)
     try {
       await navigator.clipboard.writeText(text)
       showToast('結果已複製！')
     } catch {
-      // Fallback for older browsers / insecure context.
       const textarea = document.createElement('textarea')
       textarea.value = text
       textarea.setAttribute('readonly', '')
@@ -153,22 +236,28 @@ export function useDrawGame() {
         document.body.removeChild(textarea)
       }
     }
-  }, [allDone, state.players, showToast])
+  }, [me, showToast])
 
   return {
-    players: state.players,
-    drawingPlayerId,
+    phase,
+    me,
+    session,
+    nameInput,
+    setNameInput,
+    authBusy,
+    drawing,
     spinJob,
-    isLocked,
-    allDone,
     toast,
+    error,
+    setError,
     confirmReset,
-    setPlayerName,
-    drawForPlayer,
+    handleRegister,
+    handleLogin,
+    logout,
+    draw,
     requestReset,
     cancelReset,
     confirmResetAction,
     copyResults,
-    dismissToast: () => setToast(null),
   }
 }

@@ -27,29 +27,6 @@ export const JOB_STYLES: Record<Job, JobStyle> = {
   },
 }
 
-/** Pick one job uniformly from the remaining pool (does not mutate input). */
-export function pickRandomJob(remainingJobs: readonly Job[]): {
-  job: Job
-  nextRemaining: Job[]
-} {
-  if (remainingJobs.length === 0) {
-    throw new Error('沒有剩餘職業可供抽籤')
-  }
-
-  const index = Math.floor(Math.random() * remainingJobs.length)
-  const job = remainingJobs[index]
-  if (job === undefined) {
-    throw new Error('抽籤索引無效')
-  }
-
-  const nextRemaining = remainingJobs.filter((_, i) => i !== index)
-  return { job, nextRemaining }
-}
-
-/**
- * Build a spin timeline that ends on `finalJob`.
- * Total duration is roughly 1.6–1.9s unless reduced motion is preferred.
- */
 export function buildSpinFrames(
   finalJob: Job,
   reducedMotion: boolean,
@@ -71,7 +48,6 @@ export function buildSpinFrames(
     delay = Math.min(delay * 1.18, 220)
   }
 
-  // Ensure the last few frames lead into the real result.
   const decoys = pool.filter((j) => j !== finalJob)
   if (decoys.length > 0) {
     frames.push({
@@ -84,14 +60,6 @@ export function buildSpinFrames(
   return frames
 }
 
-export function formatShareText(
-  players: { name: string; job: Job }[],
-): string {
-  const lines = players.map((p) => `${p.name}：${p.job}`)
-  return ['新楓之谷經典服職業抽籤結果', '', ...lines].join('\n')
-}
-
-export function displayName(name: string, fallbackIndex: number): string {
-  const trimmed = name.trim()
-  return trimmed.length > 0 ? trimmed : `玩家 ${fallbackIndex + 1}`
+export function formatOwnResultText(name: string, job: Job): string {
+  return ['新楓之谷經典服職業抽籤結果', '', `${name}：${job}`].join('\n')
 }

@@ -1,0 +1,8 @@
+name = "classic-job-draw"
+compatibility_date = "2025-08-01"
+pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "DRAW_KV"
+id = "1200ef84be604b7d94a4b478ceeb8846"
+preview_id = "1f4ffe130e164a65992d1f68c72ec033"
