@@ -81,7 +81,7 @@ function GuideBody({
       <p className="skill-guide__role">{guide.role}</p>
       <p className="skill-guide__badge-row">
         <span className="skill-guide__pill">Lv.100 上限</span>
-        <span className="skill-guide__pill">最高四轉</span>
+        <span className="skill-guide__pill">最高二轉</span>
         {currentLevel ? (
           <span className="skill-guide__pill skill-guide__pill--level">
             你：Lv.{currentLevel}

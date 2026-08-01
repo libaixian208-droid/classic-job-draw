@@ -66,7 +66,7 @@ export default function App() {
       <Celebration active={showCelebration} />
 
       <main className="app-main">
-        <HeroBanner subtitle="經典版十二職可選。開房勾職業，人數隨之而定。" />
+        <HeroBanner subtitle="新楓之谷：經典版・開房勾職業。100 級／目前最高二轉。" />
 
         {phase === 'loading' ? (
           <p className="loading-msg" role="status">

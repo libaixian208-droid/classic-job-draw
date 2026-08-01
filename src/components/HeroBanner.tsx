@@ -3,7 +3,7 @@ interface HeroBannerProps {
 }
 
 export function HeroBanner({
-  subtitle = '三個冒險者，三種命運。100 級・最高四轉。',
+  subtitle = '新楓之谷：經典版・十二職二轉。100 級・目前最高二轉。',
 }: HeroBannerProps) {
   return (
     <header className="hero">
