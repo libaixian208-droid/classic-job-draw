@@ -3,6 +3,7 @@ import { JOB_STYLES } from '../lib/jobs'
 import {
   formatSkillGuideText,
   getSkillGuide,
+  SERVER_RULES,
   type SkillGuide,
 } from '../lib/skillGuides'
 import { playClick } from '../lib/sfx'
@@ -11,9 +12,16 @@ import type { Job } from '../types'
 interface SkillGuidePanelProps {
   job: Job
   defaultOpen?: boolean
+  showServerRules?: boolean
 }
 
-function GuideBody({ guide }: { guide: SkillGuide }) {
+function GuideBody({
+  guide,
+  showServerRules,
+}: {
+  guide: SkillGuide
+  showServerRules: boolean
+}) {
   const style = JOB_STYLES[guide.job]
 
   return (
@@ -22,10 +30,48 @@ function GuideBody({ guide }: { guide: SkillGuide }) {
         <span style={{ color: style.accent }}>{guide.path}</span>
       </p>
       <p className="skill-guide__role">{guide.role}</p>
-      <p className="skill-guide__stat">
-        <strong>能力值：</strong>
-        {guide.stat}
+      <p className="skill-guide__badge-row">
+        <span className="skill-guide__pill">Lv.100 上限</span>
+        <span className="skill-guide__pill">最高二轉</span>
       </p>
+
+      {showServerRules ? (
+        <div className="skill-guide__stage skill-guide__stage--rules">
+          <h4 className="skill-guide__stage-title">{SERVER_RULES.title}</h4>
+          <ul className="skill-guide__bullets">
+            {SERVER_RULES.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="skill-guide__stage">
+        <h4 className="skill-guide__stage-title">能力值配點</h4>
+        {guide.statBuilds.map((build) => (
+          <div key={build.name} className="skill-guide__build">
+            <p className="skill-guide__build-name">{build.name}</p>
+            <p className="skill-guide__stage-summary">{build.summary}</p>
+            <ul className="skill-guide__bullets">
+              {build.details.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="skill-guide__stage">
+        <h4 className="skill-guide__stage-title">裝備與門檻</h4>
+        <ul className="skill-guide__gear">
+          {guide.gearNotes.map((g) => (
+            <li key={g.label}>
+              <strong>{g.label}</strong>
+              <span>{g.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {guide.stages.map((stage) => (
         <div key={stage.title} className="skill-guide__stage">
@@ -45,8 +91,23 @@ function GuideBody({ guide }: { guide: SkillGuide }) {
         </div>
       ))}
 
+      <div className="skill-guide__stage">
+        <h4 className="skill-guide__stage-title">練功路線</h4>
+        <ul className="skill-guide__routes">
+          {guide.leveling.map((route) => (
+            <li key={route.range}>
+              <span className="skill-guide__range">{route.range}</span>
+              <span className="skill-guide__spots">{route.spots}</span>
+              {route.note ? (
+                <span className="skill-guide__route-note">{route.note}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="skill-guide__tips">
-        <h4 className="skill-guide__stage-title">冒險小提示</h4>
+        <h4 className="skill-guide__stage-title">核心提醒</h4>
         <ul>
           {guide.tips.map((tip) => (
             <li key={tip}>{tip}</li>
@@ -62,6 +123,7 @@ function GuideBody({ guide }: { guide: SkillGuide }) {
 export function SkillGuidePanel({
   job,
   defaultOpen = true,
+  showServerRules = false,
 }: SkillGuidePanelProps) {
   const guide = getSkillGuide(job)
   const style = JOB_STYLES[job]
@@ -104,7 +166,7 @@ export function SkillGuidePanel({
             {style.emoji}
           </span>
           <span>
-            {job}・技能加點推薦
+            {job}・經典版攻略
             <span className="skill-guide__chevron" aria-hidden="true">
               {open ? '▾' : '▸'}
             </span>
@@ -115,13 +177,13 @@ export function SkillGuidePanel({
           className="btn btn-secondary skill-guide__copy"
           onClick={() => void onCopyGuide()}
         >
-          {copied ? '已複製' : '複製加點'}
+          {copied ? '已複製' : '複製攻略'}
         </button>
       </div>
 
       {open ? (
         <div id={`${panelId}-content`}>
-          <GuideBody guide={guide} />
+          <GuideBody guide={guide} showServerRules={showServerRules} />
         </div>
       ) : null}
     </section>
@@ -133,7 +195,6 @@ interface SkillGuideBookProps {
   showAll?: boolean
 }
 
-/** Shows your job guide; after full reveal, also lists the other two collapsed. */
 export function SkillGuideBook({ focusJob, showAll = false }: SkillGuideBookProps) {
   const others = (['槍騎兵', '僧侶', '冰雷巫師'] as Job[]).filter(
     (j) => j !== focusJob,
@@ -141,7 +202,7 @@ export function SkillGuideBook({ focusJob, showAll = false }: SkillGuideBookProp
 
   return (
     <div className="skill-guide-book">
-      <SkillGuidePanel job={focusJob} defaultOpen />
+      <SkillGuidePanel job={focusJob} defaultOpen showServerRules />
       {showAll
         ? others.map((job) => (
             <SkillGuidePanel key={job} job={job} defaultOpen={false} />

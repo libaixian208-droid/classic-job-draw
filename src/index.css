@@ -1306,6 +1306,130 @@
   border-top: 2px dashed #c4a882;
 }
 
+.skill-guide__badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+}
+
+.skill-guide__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #c4a882;
+  border-radius: 3px;
+  background: rgba(255, 248, 230, 0.9);
+  color: var(--color-wood-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.skill-guide__stage--rules {
+  border-color: var(--color-maple);
+  background: #f8e8d8;
+}
+
+.skill-guide__bullets {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.skill-guide__build {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #d4c0a0;
+}
+
+.skill-guide__build:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.skill-guide__build-name {
+  margin: 0 0 0.25rem;
+  font-weight: 700;
+  color: var(--color-maple-deep);
+  font-size: 0.92rem;
+}
+
+.skill-guide__gear {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.skill-guide__gear li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.45rem 0.5rem;
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.skill-guide__gear strong {
+  color: var(--color-wood-dark);
+}
+
+.skill-guide__gear span {
+  color: var(--color-ink-soft);
+}
+
+.skill-guide__routes {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.skill-guide__routes li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.2rem 0.65rem;
+  padding: 0.5rem 0.55rem;
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  font-size: 0.88rem;
+}
+
+.skill-guide__range {
+  font-weight: 700;
+  color: var(--color-maple-deep);
+}
+
+.skill-guide__spots {
+  color: var(--color-ink);
+  line-height: 1.4;
+}
+
+.skill-guide__route-note {
+  grid-column: 2;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .skill-guide__routes li {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-guide__route-note {
+    grid-column: 1;
+  }
+}
+
 .skill-guide__meta {
   margin: 0 0 0.35rem;
   font-size: 0.92rem;
