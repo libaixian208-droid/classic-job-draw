@@ -1,11 +1,14 @@
+import { AdventureBackdrop } from './components/AdventureBackdrop'
 import { AuthPanel } from './components/AuthPanel'
 import { Celebration } from './components/Celebration'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Footer } from './components/Footer'
+import { HeroBanner } from './components/HeroBanner'
 import { MyDrawCard } from './components/MyDrawCard'
 import { ResultPanel } from './components/ResultPanel'
 import { Toast } from './components/Toast'
 import { useDrawGame } from './hooks/useDrawGame'
+import { playClick } from './lib/sfx'
 
 export default function App() {
   const {
@@ -34,24 +37,15 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="app-bg" aria-hidden="true">
-        <div className="app-bg__sky" />
-        <div className="app-bg__hills" />
-        <div className="app-bg__pixels" />
-      </div>
-
+      <AdventureBackdrop />
       <Celebration active={showCelebration} />
 
       <main className="app-main">
-        <header className="hero">
-          <p className="hero__eyebrow">Classic Server · Job Fate</p>
-          <h1 className="hero__title">經典服職業命運抽籤</h1>
-          <p className="hero__subtitle">三個冒險者，三種命運。</p>
-        </header>
+        <HeroBanner />
 
         {phase === 'loading' ? (
           <p className="loading-msg" role="status">
-            載入中…
+            正在進入村莊…
           </p>
         ) : null}
 
@@ -59,8 +53,14 @@ export default function App() {
           <AuthPanel
             nameInput={nameInput}
             onNameChange={setNameInput}
-            onRegister={() => void handleRegister()}
-            onLogin={() => void handleLogin()}
+            onRegister={() => {
+              playClick()
+              void handleRegister()
+            }}
+            onLogin={() => {
+              playClick()
+              void handleLogin()
+            }}
             busy={authBusy}
             error={error}
             session={session}
@@ -79,7 +79,8 @@ export default function App() {
               />
 
               {session ? (
-                <aside className="roster-side" aria-label="隊伍狀態">
+                <aside className="roster-side rpg-frame" aria-label="隊伍狀態">
+                  <div className="rpg-frame__corners" aria-hidden="true" />
                   <h2 className="roster-side__title">隊伍狀態</h2>
                   <p className="roster-side__summary">
                     {session.registeredCount}/{session.maxPlayers} 人已加入 ·{' '}

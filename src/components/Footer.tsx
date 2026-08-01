@@ -9,6 +9,9 @@ export function Footer() {
       >
         ctrlzworks.com
       </a>
+      <p className="site-footer__note">
+        本站為粉絲小工具，與遊戲官方無關；未使用任何官方素材。
+      </p>
     </footer>
   )
 }

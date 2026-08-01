@@ -30,7 +30,8 @@ export function ResultPanel({
     : null
 
   return (
-    <section className="result-panel" aria-labelledby="result-heading">
+    <section className="result-panel rpg-frame" aria-labelledby="result-heading">
+      <div className="rpg-frame__corners" aria-hidden="true" />
       <div className="result-panel__glow" aria-hidden="true" />
       <h2 id="result-heading" className="result-panel__title">
         {revealed ? '命運揭曉！' : '你的命運揭曉！'}

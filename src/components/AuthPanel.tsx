@@ -25,12 +25,13 @@ export function AuthPanel({
   const revealed = session?.allDone ? session.results : null
 
   return (
-    <section className="auth-panel" aria-labelledby="auth-heading">
+    <section className="auth-panel rpg-frame" aria-labelledby="auth-heading">
+      <div className="rpg-frame__corners" aria-hidden="true" />
       <h2 id="auth-heading" className="auth-panel__title">
-        冒險者登記
+        村莊冒險者登記處
       </h2>
       <p className="auth-panel__desc">
-        輸入名字註冊或登入。抽籤過程中只能看到自己的結果，三人全部抽完後會公布。
+        在這座小村莊登記你的冒險者名字。抽籤途中只見自己的命運，三人齊聚後才會揭曉全貌。
       </p>
 
       <div className="auth-panel__field">
@@ -68,7 +69,7 @@ export function AuthPanel({
           disabled={!canSubmit || full}
           onClick={onRegister}
         >
-          {full ? '人數已滿' : busy ? '處理中…' : '註冊'}
+          {full ? '隊伍已滿' : busy ? '蓋印中…' : '註冊入隊'}
         </button>
         <button
           type="button"
@@ -76,7 +77,7 @@ export function AuthPanel({
           disabled={!canSubmit}
           onClick={onLogin}
         >
-          登入
+          回到村莊
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../lib/api'
 import { buildSpinFrames, formatFullResultsText, formatOwnResultText } from '../lib/jobs'
+import { playComplete, playDrawSpin, playReveal } from '../lib/sfx'
 import { clearAuth, loadAuth, saveAuth } from '../lib/storage'
 import type { Job, PrivatePlayer, PublicSession } from '../types'
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
@@ -172,16 +173,23 @@ export function useDrawGame() {
 
       const frames = buildSpinFrames(finalJob, reducedMotion)
       let cumulative = 0
+      let lastSpinAt = -1
 
       await new Promise<void>((resolve) => {
         frames.forEach((frame, index) => {
           cumulative += frame.delayMs
           const timer = window.setTimeout(() => {
             setSpinJob(frame.job)
+            if (index === 0 || cumulative - lastSpinAt > 180) {
+              playDrawSpin()
+              lastSpinAt = cumulative
+            }
             if (index === frames.length - 1) {
               setMe(res.me)
               setDrawing(false)
               setSpinJob(null)
+              playReveal()
+              if (res.session.allDone) playComplete()
               resolve()
             }
           }, cumulative)
