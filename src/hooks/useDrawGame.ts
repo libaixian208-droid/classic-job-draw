@@ -2,25 +2,49 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../lib/api'
 import { buildSpinFrames, formatFullResultsText, formatOwnResultText } from '../lib/jobs'
 import { playComplete, playDrawSpin, playReveal } from '../lib/sfx'
-import { clearAuth, loadAuth, saveAuth } from '../lib/storage'
+import { shareOrDownloadResultCard } from '../lib/shareCard'
+import {
+  clearAuth,
+  clearRoomFromUrl,
+  loadAuth,
+  readRoomFromUrl,
+  readWatchFromUrl,
+  saveAuth,
+  writeRoomToUrl,
+} from '../lib/storage'
 import type { Job, PrivatePlayer, PublicSession } from '../types'
+import { DEFAULT_JOBS } from '../lib/jobs'
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
 
-type Phase = 'loading' | 'auth' | 'ready'
+type Phase = 'loading' | 'lobby' | 'auth' | 'ready' | 'watch'
+
+function isValidRoomCode(code: string): boolean {
+  return /^[A-Z0-9]{6}$/.test(code.trim().toUpperCase())
+}
 
 export function useDrawGame() {
   const reducedMotion = usePrefersReducedMotion()
   const [phase, setPhase] = useState<Phase>('loading')
+  const [roomCode, setRoomCode] = useState<string | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [me, setMe] = useState<PrivatePlayer | null>(null)
   const [session, setSession] = useState<PublicSession | null>(null)
   const [nameInput, setNameInput] = useState('')
+  const [roomInput, setRoomInput] = useState('')
+  const [selectedJobs, setSelectedJobs] = useState<Job[]>([...DEFAULT_JOBS])
   const [authBusy, setAuthBusy] = useState(false)
+  const [lobbyBusy, setLobbyBusy] = useState(false)
+  const [hostBusy, setHostBusy] = useState(false)
+  const [shareBusy, setShareBusy] = useState(false)
   const [drawing, setDrawing] = useState(false)
   const [spinJob, setSpinJob] = useState<Job | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmKickId, setConfirmKickId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [tabVisible, setTabVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  )
   const timersRef = useRef<number[]>([])
   const toastTimerRef = useRef<number | null>(null)
 
@@ -49,20 +73,47 @@ export function useDrawGame() {
     }
   }, [clearTimers])
 
+  useEffect(() => {
+    const onVisibility = () => {
+      setTabVisible(document.visibilityState === 'visible')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
+  const enterRoom = useCallback(
+    (code: string, nextSession: PublicSession, watch = false) => {
+      const normalized = code.trim().toUpperCase()
+      setRoomCode(normalized)
+      setSession(nextSession)
+      writeRoomToUrl(normalized, watch)
+      setPhase(watch ? 'watch' : 'auth')
+      setError(null)
+    },
+    [],
+  )
+
   const applyAuth = useCallback(
-    (nextToken: string, nextMe: PrivatePlayer, nextSession: PublicSession) => {
+    (
+      nextRoom: string,
+      nextToken: string,
+      nextMe: PrivatePlayer,
+      nextSession: PublicSession,
+    ) => {
+      setRoomCode(nextRoom)
       setToken(nextToken)
       setMe(nextMe)
       setSession(nextSession)
-      saveAuth(nextToken, nextMe.name)
+      saveAuth(nextRoom, nextToken, nextMe.name)
+      writeRoomToUrl(nextRoom, false)
       setPhase('ready')
       setError(null)
     },
     [],
   )
 
-  const refreshPublic = useCallback(async () => {
-    const res = await api.fetchSession()
+  const refreshPublic = useCallback(async (code: string) => {
+    const res = await api.fetchSession(code)
     setSession(res.session)
   }, [])
 
@@ -72,24 +123,56 @@ export function useDrawGame() {
     async function boot() {
       try {
         const saved = loadAuth()
-        if (saved) {
+        const urlRoom = readRoomFromUrl()
+        const watch = readWatchFromUrl()
+
+        if (watch && urlRoom) {
           try {
-            const res = await api.fetchMe(saved.token)
+            const res = await api.fetchSession(urlRoom)
             if (cancelled) return
-            applyAuth(saved.token, res.me, res.session)
+            enterRoom(urlRoom, res.session, true)
+            return
+          } catch {
+            if (cancelled) return
+            clearRoomFromUrl()
+            setError('找不到這個房間，請重新建立或加入')
+            setPhase('lobby')
+            return
+          }
+        }
+
+        if (saved && !watch) {
+          try {
+            const res = await api.fetchMe(saved.roomCode, saved.token)
+            if (cancelled) return
+            applyAuth(saved.roomCode, saved.token, res.me, res.session)
             return
           } catch {
             clearAuth()
           }
         }
-        const publicSession = await api.fetchSession()
+
+        if (urlRoom) {
+          try {
+            const res = await api.fetchSession(urlRoom)
+            if (cancelled) return
+            enterRoom(urlRoom, res.session, false)
+            return
+          } catch {
+            if (cancelled) return
+            clearRoomFromUrl()
+            setError('找不到這個房間，請重新建立或加入')
+            setPhase('lobby')
+            return
+          }
+        }
+
         if (cancelled) return
-        setSession(publicSession.session)
-        setPhase('auth')
+        setPhase('lobby')
       } catch {
         if (cancelled) return
-        setError('無法連線到伺服器，請稍後再試')
-        setPhase('auth')
+        setError('無法連線到伺服器，請檢查網路後再試')
+        setPhase('lobby')
       }
     }
 
@@ -97,16 +180,16 @@ export function useDrawGame() {
     return () => {
       cancelled = true
     }
-  }, [applyAuth])
+  }, [applyAuth, enterRoom])
 
-  // Soft-refresh while logged in; poll faster while waiting for full reveal.
+  // Soft-refresh while logged in; pause when tab hidden.
   useEffect(() => {
-    if (phase !== 'ready' || !token) return
+    if (phase !== 'ready' || !token || !roomCode || !tabVisible) return
     const waitingReveal = Boolean(me?.job) && !session?.allDone
     const intervalMs = waitingReveal ? 3000 : 8000
     const id = window.setInterval(() => {
       void api
-        .fetchMe(token)
+        .fetchMe(roomCode, token)
         .then((res) => {
           setMe(res.me)
           setSession(res.session)
@@ -116,35 +199,149 @@ export function useDrawGame() {
         })
     }, intervalMs)
     return () => window.clearInterval(id)
-  }, [phase, token, me?.job, session?.allDone])
+  }, [phase, token, roomCode, me?.job, session?.allDone, tabVisible])
+
+  // Watch-mode polling
+  useEffect(() => {
+    if (phase !== 'watch' || !roomCode || !tabVisible) return
+    const intervalMs = session?.allDone ? 10000 : 4000
+    const id = window.setInterval(() => {
+      void api
+        .fetchSession(roomCode)
+        .then((res) => setSession(res.session))
+        .catch(() => {
+          /* ignore */
+        })
+    }, intervalMs)
+    return () => window.clearInterval(id)
+  }, [phase, roomCode, session?.allDone, tabVisible])
+
+  const createRoom = useCallback(async () => {
+    setLobbyBusy(true)
+    setError(null)
+    try {
+      const res = await api.createRoom(selectedJobs)
+      enterRoom(res.roomCode, res.session, false)
+      showToast(`房間 ${res.roomCode}・${res.session.maxPlayers} 人`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '建立房間失敗')
+    } finally {
+      setLobbyBusy(false)
+    }
+  }, [selectedJobs, enterRoom, showToast])
+
+  const joinRoom = useCallback(async () => {
+    const code = roomInput.trim().toUpperCase()
+    if (!isValidRoomCode(code)) {
+      setError('房間代碼須為 6 碼英數')
+      return
+    }
+    setLobbyBusy(true)
+    setError(null)
+    try {
+      const res = await api.fetchSession(code)
+      enterRoom(code, res.session, false)
+      showToast(`已加入房間 ${code}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加入房間失敗')
+    } finally {
+      setLobbyBusy(false)
+    }
+  }, [roomInput, enterRoom, showToast])
+
+  const watchRoom = useCallback(async () => {
+    const code = roomInput.trim().toUpperCase()
+    if (!isValidRoomCode(code)) {
+      setError('房間代碼須為 6 碼英數')
+      return
+    }
+    setLobbyBusy(true)
+    setError(null)
+    try {
+      const res = await api.fetchSession(code)
+      enterRoom(code, res.session, true)
+      showToast(`觀戰房間 ${code}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '觀戰失敗')
+    } finally {
+      setLobbyBusy(false)
+    }
+  }, [roomInput, enterRoom, showToast])
+
+  const enterWatchFromAuth = useCallback(() => {
+    if (!roomCode || !session) return
+    clearAuth()
+    setToken(null)
+    setMe(null)
+    writeRoomToUrl(roomCode, true)
+    setPhase('watch')
+    showToast('已進入觀戰')
+  }, [roomCode, session, showToast])
+
+  const leaveRoom = useCallback(() => {
+    clearTimers()
+    clearAuth()
+    clearRoomFromUrl()
+    setToken(null)
+    setMe(null)
+    setSession(null)
+    setRoomCode(null)
+    setDrawing(false)
+    setSpinJob(null)
+    setNameInput('')
+    setError(null)
+    setPhase('lobby')
+  }, [clearTimers])
 
   const handleRegister = useCallback(async () => {
+    if (!roomCode) return
     setAuthBusy(true)
     setError(null)
     try {
-      const res = await api.register(nameInput)
-      applyAuth(res.token, res.me, res.session)
+      const res = await api.register(roomCode, nameInput)
+      applyAuth(roomCode, res.token, res.me, res.session)
       showToast('註冊成功！')
     } catch (e) {
       setError(e instanceof Error ? e.message : '註冊失敗')
     } finally {
       setAuthBusy(false)
     }
-  }, [nameInput, applyAuth, showToast])
+  }, [roomCode, nameInput, applyAuth, showToast])
 
   const handleLogin = useCallback(async () => {
+    if (!roomCode) return
     setAuthBusy(true)
     setError(null)
     try {
-      const res = await api.login(nameInput)
-      applyAuth(res.token, res.me, res.session)
+      const res = await api.login(roomCode, nameInput)
+      applyAuth(roomCode, res.token, res.me, res.session)
       showToast(`歡迎回來，${res.me.name}！`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '登入失敗')
     } finally {
       setAuthBusy(false)
     }
-  }, [nameInput, applyAuth, showToast])
+  }, [roomCode, nameInput, applyAuth, showToast])
+
+  const handleAuthEnter = useCallback(() => {
+    const trimmed = nameInput.trim()
+    if (!trimmed || authBusy) return
+    const key = trimmed.toLowerCase()
+    const exists = session?.players.some(
+      (p) => p.name.trim().toLowerCase() === key,
+    )
+    if (exists) {
+      void handleLogin()
+      return
+    }
+    const full =
+      (session?.registeredCount ?? 0) >= (session?.maxPlayers ?? 3)
+    if (full) {
+      setError('隊伍已滿；若你已註冊，請用相同名字登入，或改為觀戰')
+      return
+    }
+    void handleRegister()
+  }, [nameInput, authBusy, session, handleLogin, handleRegister])
 
   const logout = useCallback(() => {
     clearTimers()
@@ -154,24 +351,30 @@ export function useDrawGame() {
     setDrawing(false)
     setSpinJob(null)
     setPhase('auth')
-    void refreshPublic()
-  }, [clearTimers, refreshPublic])
+    if (roomCode) {
+      writeRoomToUrl(roomCode, false)
+      void refreshPublic(roomCode)
+    }
+  }, [clearTimers, refreshPublic, roomCode])
 
   const draw = useCallback(async () => {
-    if (!token || !me || me.job !== null || drawing) return
+    if (!token || !roomCode || !me || me.job !== null || drawing) return
     setDrawing(true)
     setError(null)
     clearTimers()
 
     try {
-      const res = await api.draw(token)
+      const res = await api.draw(roomCode, token)
       const finalJob = res.me.job
       if (!finalJob) throw new Error('抽籤失敗')
 
-      // Keep public session (without revealing others' jobs).
       setSession(res.session)
 
-      const frames = buildSpinFrames(finalJob, reducedMotion)
+      const frames = buildSpinFrames(
+        finalJob,
+        reducedMotion,
+        res.session.selectedJobs,
+      )
       let cumulative = 0
       let lastSpinAt = -1
 
@@ -201,27 +404,70 @@ export function useDrawGame() {
       setSpinJob(null)
       setError(e instanceof Error ? e.message : '抽籤失敗')
     }
-  }, [token, me, drawing, reducedMotion, clearTimers])
+  }, [token, roomCode, me, drawing, reducedMotion, clearTimers])
 
   const requestReset = useCallback(() => {
-    if (drawing) return
+    if (drawing || !me?.isHost) return
     setConfirmReset(true)
-  }, [drawing])
+  }, [drawing, me?.isHost])
 
   const cancelReset = useCallback(() => setConfirmReset(false), [])
 
   const confirmResetAction = useCallback(async () => {
-    if (!token) return
+    if (!token || !roomCode) return
     setConfirmReset(false)
     try {
-      const res = await api.resetRound(token)
+      const res = await api.resetRound(roomCode, token)
       setMe(res.me)
       setSession(res.session)
       showToast('已重新開始抽籤')
     } catch (e) {
       setError(e instanceof Error ? e.message : '重置失敗')
     }
-  }, [token, showToast])
+  }, [token, roomCode, showToast])
+
+  const updateJobs = useCallback(
+    async (jobs: Job[]) => {
+      if (!token || !roomCode) return
+      setHostBusy(true)
+      setError(null)
+      try {
+        const res = await api.updateJobs(roomCode, token, jobs)
+        setMe(res.me)
+        setSession(res.session)
+        showToast(`職業池已更新・${res.session.maxPlayers} 人`)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '更新職業池失敗')
+      } finally {
+        setHostBusy(false)
+      }
+    },
+    [token, roomCode, showToast],
+  )
+
+  const requestKick = useCallback((playerId: number) => {
+    setConfirmKickId(playerId)
+  }, [])
+
+  const cancelKick = useCallback(() => setConfirmKickId(null), [])
+
+  const confirmKickAction = useCallback(async () => {
+    if (!token || !roomCode || confirmKickId === null) return
+    const playerId = confirmKickId
+    setConfirmKickId(null)
+    setHostBusy(true)
+    setError(null)
+    try {
+      const res = await api.kickPlayer(roomCode, token, playerId)
+      setMe(res.me)
+      setSession(res.session)
+      showToast('已踢出玩家')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '踢出失敗')
+    } finally {
+      setHostBusy(false)
+    }
+  }, [token, roomCode, confirmKickId, showToast])
 
   const copyResults = useCallback(async () => {
     if (!me?.job) return
@@ -251,26 +497,84 @@ export function useDrawGame() {
     }
   }, [me, session, showToast])
 
+  const shareResults = useCallback(async () => {
+    if (!roomCode || !session?.results?.length) return
+    setShareBusy(true)
+    try {
+      const mode = await shareOrDownloadResultCard({
+        roomCode,
+        results: session.results,
+      })
+      showToast(mode === 'shared' ? '已開啟分享' : '結果圖已下載')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '分享失敗')
+    } finally {
+      setShareBusy(false)
+    }
+  }, [roomCode, session, showToast])
+
+  const copyRoomLink = useCallback(async () => {
+    if (!roomCode) return
+    const url = new URL(window.location.href)
+    url.searchParams.set('room', roomCode)
+    if (phase === 'watch') url.searchParams.set('watch', '1')
+    else url.searchParams.delete('watch')
+    const text = url.toString()
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast(phase === 'watch' ? '觀戰連結已複製' : '房間連結已複製')
+    } catch {
+      showToast(`房間代碼：${roomCode}`)
+    }
+  }, [roomCode, phase, showToast])
+
+  const kickTargetName =
+    confirmKickId === null
+      ? null
+      : (session?.players.find((p) => p.id === confirmKickId)?.name ?? null)
+
   return {
     phase,
+    roomCode,
     me,
     session,
     nameInput,
     setNameInput,
+    roomInput,
+    setRoomInput,
+    selectedJobs,
+    setSelectedJobs,
     authBusy,
+    lobbyBusy,
+    hostBusy,
+    shareBusy,
     drawing,
     spinJob,
     toast,
     error,
     setError,
     confirmReset,
+    confirmKickId,
+    kickTargetName,
+    createRoom,
+    joinRoom,
+    watchRoom,
+    enterWatchFromAuth,
+    leaveRoom,
     handleRegister,
     handleLogin,
+    handleAuthEnter,
     logout,
     draw,
     requestReset,
     cancelReset,
     confirmResetAction,
+    updateJobs,
+    requestKick,
+    cancelKick,
+    confirmKickAction,
     copyResults,
+    shareResults,
+    copyRoomLink,
   }
 }

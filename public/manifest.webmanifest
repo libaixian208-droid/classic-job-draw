@@ -1,0 +1,18 @@
+{
+  "name": "經典服職業抽籤",
+  "short_name": "職業抽籤",
+  "description": "新楓之谷經典版職業抽籤：開房勾選職業池，公平分配不重複職業。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a3a4a",
+  "theme_color": "#c45c26",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

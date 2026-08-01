@@ -6,6 +6,11 @@ interface AuthPanelProps {
   onNameChange: (value: string) => void
   onRegister: () => void
   onLogin: () => void
+  onEnterSubmit: () => void
+  onLeaveRoom: () => void
+  onCopyRoomLink: () => void
+  onWatch: () => void
+  roomCode: string
   busy: boolean
   error: string | null
   session: PublicSession | null
@@ -16,6 +21,11 @@ export function AuthPanel({
   onNameChange,
   onRegister,
   onLogin,
+  onEnterSubmit,
+  onLeaveRoom,
+  onCopyRoomLink,
+  onWatch,
+  roomCode,
   busy,
   error,
   session,
@@ -31,8 +41,34 @@ export function AuthPanel({
         村莊冒險者登記處
       </h2>
       <p className="auth-panel__desc">
-        在這座小村莊登記你的冒險者名字。抽籤途中只見自己的命運，三人齊聚後才會揭曉全貌。
+        在這座小村莊登記你的冒險者名字。抽籤途中只見自己的命運，全員抽完後才會揭曉全貌。
       </p>
+
+      <div className="auth-panel__room">
+        <span className="auth-panel__room-label">房間</span>
+        <code className="auth-panel__room-code">{roomCode}</code>
+        <button
+          type="button"
+          className="btn btn-secondary auth-panel__room-btn"
+          onClick={onCopyRoomLink}
+        >
+          複製連結
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary auth-panel__room-btn"
+          onClick={onLeaveRoom}
+        >
+          換房間
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary auth-panel__room-btn"
+          onClick={onWatch}
+        >
+          改觀戰
+        </button>
+      </div>
 
       <div className="auth-panel__field">
         <label htmlFor="adventurer-name">你的名字</label>
@@ -48,10 +84,7 @@ export function AuthPanel({
           autoFocus
           onChange={(e) => onNameChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && canSubmit) {
-              if (full) onLogin()
-              else onRegister()
-            }
+            if (e.key === 'Enter' && canSubmit) onEnterSubmit()
           }}
         />
       </div>
@@ -92,7 +125,10 @@ export function AuthPanel({
                 <span>
                   {JOB_STYLES[r.job].emoji} {r.name}
                 </span>
-                <span className="auth-panel__status" style={{ color: JOB_STYLES[r.job].accent }}>
+                <span
+                  className="auth-panel__status"
+                  style={{ color: JOB_STYLES[r.job].accent }}
+                >
                   {r.job}
                 </span>
               </li>
@@ -102,7 +138,10 @@ export function AuthPanel({
           <ul className="auth-panel__list">
             {session.players.map((p) => (
               <li key={p.id}>
-                <span>{p.name}</span>
+                <span>
+                  {p.name}
+                  {p.isHost ? '（房主）' : ''}
+                </span>
                 <span className="auth-panel__status">
                   {p.hasDrawn ? '已抽籤' : '尚未抽籤'}
                 </span>
@@ -118,7 +157,16 @@ export function AuthPanel({
               ? '本輪抽籤已全部完成'
               : `${session.registeredCount} / ${session.maxPlayers} 人已加入`
             : '讀取中…'}
+          {session && typeof session.expiresInDays === 'number'
+            ? ` · 約 ${session.expiresInDays} 天後閒置過期`
+            : ''}
         </p>
+        {session && session.selectedJobs.length > 0 ? (
+          <p className="auth-panel__jobs">
+            職業池（{session.maxPlayers} 人）：
+            {session.selectedJobs.join('、')}
+          </p>
+        ) : null}
       </div>
     </section>
   )

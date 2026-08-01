@@ -1,18 +1,25 @@
 # 經典服職業命運抽籤
 
-三人三職業的新楓之谷經典服隨機職業抽籤工具。每位冒險者需用名字註冊／登入，且只能看到自己的職業結果。
+新楓之谷經典版職業抽籤工具：開房勾選 2～12 職，人數等於職業池，每人抽到不重複職業。抽籤途中只見自己的結果，全員抽完後才揭曉。
 
 正式網域：`https://draw.ctrlzworks.com`  
 暫時網址：`https://classic-job-draw.pages.dev`
 
 ## 功能
 
-- 名字註冊／登入（最多 3 人）
+- **房間代碼**：建立／加入 6 碼房間；開房可勾選經典版 12 職（人數＝勾選數）
+- **觀戰**：`?room=XXXXXX&watch=1` 或大廳「觀戰」，只看進度與結果
+- 名字註冊／登入（每房最多與職業池相同人數；第一位註冊者為房主）
+- **房主**：改職業池、踢人、重新抽籤（已有人抽過須先重抽才能改池）
 - 登入後只能看見自己的抽籤結果，其他人職業不顯示
-- 伺服器端職業池不重複，最終三人必定不同職業
+- 伺服器端職業池不重複；抽籤有鎖／revision 防競態
 - 約 1.5–2 秒抽籤輪播動畫（尊重 `prefers-reduced-motion`）
-- Cloudflare KV 保存共用抽籤狀態；瀏覽器 localStorage 只保存登入 token
-- 複製自己的結果、重新抽籤（需確認；保留已註冊名字）
+- Cloudflare KV 按房間保存狀態（閒置約 14 天過期，介面會顯示剩餘天數）
+- 瀏覽器 localStorage 保存房間＋登入 token
+- 複製結果、分享結果圖（Web Share／下載 PNG）
+- 職業攻略：當前等級標示、僅目前等級篩選、弱屬／人少標籤
+- API 短暫失敗會自動重試；標籤頁隱藏時暫停輪詢
+- PWA（可加到主畫面；離線可開殼層）
 - 響應式：手機友善
 
 ## 建議 Node.js 版本
@@ -71,6 +78,10 @@ npx wrangler pages dev dist
 npm run lint
 ```
 
+## CI
+
+GitHub Actions（`.github/workflows/ci.yml`）會在 push／PR 執行 `lint` + `build`。
+
 ## Cloudflare Pages 部署
 
 ### 直接部署（目前專案使用）
@@ -122,12 +133,13 @@ functions/
   api/[[path]].ts   # Pages Functions API
   _lib/             # session / handlers / KV store
 src/
-  components/       # 登入、抽籤、結果 UI
+  components/       # 登入、抽籤、結果、觀戰、房主 UI
   hooks/
-  lib/              # 前端 API client、動畫
+  lib/              # 前端 API client、分享圖、攻略
   types/
   App.tsx
-public/
+public/             # favicon、PWA manifest／SW、headers
+.github/workflows/  # CI
 wrangler.toml       # Pages + KV 設定
 ```
 
@@ -135,12 +147,15 @@ wrangler.toml       # Pages + KV 設定
 
 | Method | Path | 說明 |
 |--------|------|------|
+| POST | `/api/rooms` | 建立房間（勾選職業池） |
 | GET | `/api/session` | 公開隊伍狀態（不含職業） |
 | POST | `/api/register` | 註冊名字 |
 | POST | `/api/login` | 用名字登入 |
 | POST | `/api/me` | 以 token 取得自己的資料 |
 | POST | `/api/draw` | 為自己抽籤 |
-| POST | `/api/reset` | 清除所有人職業結果（保留註冊） |
+| POST | `/api/reset` | 清除所有人職業結果（保留註冊；房主） |
+| POST | `/api/jobs` | 更新職業池（房主；無人抽過） |
+| POST | `/api/kick` | 踢出玩家（房主） |
 
 ## 授權與素材說明
 

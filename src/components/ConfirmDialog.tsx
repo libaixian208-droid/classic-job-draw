@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -10,6 +10,9 @@ interface ConfirmDialogProps {
   onCancel: () => void
 }
 
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export function ConfirmDialog({
   open,
   title,
@@ -19,17 +22,58 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const previouslyFocused = useRef<HTMLElement | null>(null)
+  const titleId = useId()
+  const descId = useId()
 
   useEffect(() => {
     if (!open) return
-    confirmRef.current?.focus()
+
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    const frame = window.requestAnimationFrame(() => {
+      confirmRef.current?.focus()
+    })
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancel()
+        return
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+
+      const nodes = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1)
+
+      if (nodes.length === 0) {
+        e.preventDefault()
+        return
+      }
+
+      const first = nodes[0]!
+      const last = nodes[nodes.length - 1]!
+      const active = document.activeElement as HTMLElement | null
+
+      if (e.shiftKey) {
+        if (active === first || !dialogRef.current.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !dialogRef.current.contains(active)) {
+        e.preventDefault()
+        first.focus()
+      }
     }
+
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', onKeyDown)
+      previouslyFocused.current?.focus?.()
+    }
   }, [open, onCancel])
 
   if (!open) return null
@@ -37,17 +81,18 @@ export function ConfirmDialog({
   return (
     <div className="dialog-backdrop" role="presentation" onClick={onCancel}>
       <div
+        ref={dialogRef}
         className="dialog"
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-desc"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="confirm-title" className="dialog__title">
+        <h2 id={titleId} className="dialog__title">
           {title}
         </h2>
-        <p id="confirm-desc" className="dialog__message">
+        <p id={descId} className="dialog__message">
           {message}
         </p>
         <div className="dialog__actions">

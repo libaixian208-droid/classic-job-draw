@@ -1,21 +1,31 @@
+import { lazy, Suspense } from 'react'
 import { JOB_STYLES } from '../lib/jobs'
 import type { PrivatePlayer, PublicSession, RevealedResult } from '../types'
-import { SkillGuideBook } from './SkillGuidePanel'
+
+const SkillGuideBook = lazy(() =>
+  import('./SkillGuidePanel').then((m) => ({ default: m.SkillGuideBook })),
+)
 
 interface ResultPanelProps {
   me: PrivatePlayer
   session: PublicSession
   onCopy: () => void
+  onShare?: () => void
+  shareBusy?: boolean
   onReset: () => void
   resetDisabled: boolean
+  canReset: boolean
 }
 
 export function ResultPanel({
   me,
   session,
   onCopy,
+  onShare,
+  shareBusy = false,
   onReset,
   resetDisabled,
+  canReset,
 }: ResultPanelProps) {
   if (!me.job) return null
 
@@ -102,18 +112,44 @@ export function ResultPanel({
           <button type="button" className="btn btn-primary" onClick={onCopy}>
             {revealed ? '複製結果' : '複製我的結果'}
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onReset}
-            disabled={resetDisabled}
-          >
-            重新抽籤
-          </button>
+          {revealed && onShare ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onShare}
+              disabled={shareBusy}
+            >
+              {shareBusy ? '產生中…' : '分享結果圖'}
+            </button>
+          ) : null}
+          {canReset ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onReset}
+              disabled={resetDisabled}
+            >
+              重新抽籤
+            </button>
+          ) : (
+            <p className="result-panel__host-hint">只有房主可以重新抽籤</p>
+          )}
         </div>
       </section>
 
-      <SkillGuideBook focusJob={me.job} showAll={Boolean(revealed)} />
+      <Suspense
+        fallback={
+          <p className="loading-msg" role="status">
+            載入職業攻略…
+          </p>
+        }
+      >
+        <SkillGuideBook
+          focusJob={me.job}
+          poolJobs={session.selectedJobs}
+          showAll={Boolean(revealed)}
+        />
+      </Suspense>
     </>
   )
 }
