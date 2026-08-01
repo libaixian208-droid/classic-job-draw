@@ -1,4 +1,11 @@
 import {
+  hashPasscode,
+  isValidPasscode,
+  normalizePasscode,
+  verifyPasscode,
+} from './passcode'
+import { enforceRateLimit } from './rateLimit'
+import {
   isValidRoomCode,
   nameKey,
   normalizeJobList,
@@ -69,6 +76,14 @@ function requireRoom(raw: unknown): string | Response {
   return code
 }
 
+function requirePasscode(raw: unknown): string | Response {
+  const pin = normalizePasscode(raw)
+  if (!isValidPasscode(pin)) {
+    return error('通行碼須為 4～8 位數字')
+  }
+  return pin
+}
+
 function authPayload(session: SessionState, player: StoredPlayer) {
   return {
     ok: true as const,
@@ -78,22 +93,66 @@ function authPayload(session: SessionState, player: StoredPlayer) {
   }
 }
 
+function reindexPlayers(session: SessionState): void {
+  session.players.sort((a, b) => a.id - b.id)
+  const hostToken =
+    session.hostPlayerId === null
+      ? null
+      : session.players.find((p) => p.id === session.hostPlayerId)?.token ?? null
+  session.players.forEach((p, i) => {
+    p.id = i
+  })
+  if (hostToken) {
+    const host = session.players.find((p) => p.token === hostToken)
+    session.hostPlayerId = host?.id ?? session.players[0]?.id ?? null
+  } else if (session.players[0]) {
+    session.hostPlayerId = session.players[0].id
+  } else {
+    session.hostPlayerId = null
+  }
+}
+
+/** Remove a seat: return job to pool, reindex, hand off host if needed. */
+function removePlayer(session: SessionState, playerId: number): boolean {
+  const target = session.players.find((p) => p.id === playerId)
+  if (!target) return false
+  if (target.job !== null) {
+    session.remainingJobs = [...session.remainingJobs, target.job]
+  }
+  if (session.hostPlayerId === target.id) {
+    session.hostPlayerId = null
+  }
+  session.players = session.players.filter((p) => p.id !== target.id)
+  reindexPlayers(session)
+  return true
+}
+
 async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'rooms', 8, 600)
+  if (limited) return limited
+
   const body = await readJson<{ jobs?: unknown }>(request)
   const jobs = normalizeJobList(body?.jobs)
   if (!jobs) {
     return error('請選擇 2～12 個不重複的經典版職業')
   }
 
-  const session = await createRoom(env.DRAW_KV, jobs)
-  return json({
-    ok: true,
-    roomCode: session.roomCode,
-    session: toPublicSession(session),
-  })
+  try {
+    const session = await createRoom(env.DRAW_KV, jobs)
+    return json({
+      ok: true,
+      roomCode: session.roomCode,
+      session: toPublicSession(session),
+    })
+  } catch {
+    return error('無法建立房間，請稍後再試', 503)
+  }
 }
 
 async function handleSession(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'session', 120, 600)
+  if (limited) return limited
+
   const url = new URL(request.url)
   const room = requireRoom(url.searchParams.get('room') ?? '')
   if (room instanceof Response) return room
@@ -104,14 +163,24 @@ async function handleSession(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleRegister(request: Request, env: Env): Promise<Response> {
-  const body = await readJson<{ name?: string; room?: string }>(request)
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'auth', 30, 600)
+  if (limited) return limited
+
+  const body = await readJson<{
+    name?: string
+    room?: string
+    passcode?: string
+  }>(request)
   const room = requireRoom(body?.room ?? '')
   if (room instanceof Response) return room
 
   const name = normalizeName(body?.name ?? '')
   if (name.length < 1) return error('請輸入名字')
   if (name.length > 20) return error('名字最多 20 個字')
+  const pin = requirePasscode(body?.passcode)
+  if (pin instanceof Response) return pin
   const key = nameKey(name)
+  const passcodeHash = await hashPasscode(pin)
 
   const outcome = await mutateRoom(env.DRAW_KV, room, (session) => {
     if (findByNameKey(session, key)) {
@@ -139,6 +208,7 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
       nameKey: key,
       job: null,
       token: crypto.randomUUID(),
+      passcodeHash,
     }
     session.players.push(player)
     session.players.sort((a, b) => a.id - b.id)
@@ -155,21 +225,60 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
-  const body = await readJson<{ name?: string; room?: string }>(request)
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'auth', 30, 600)
+  if (limited) return limited
+
+  const body = await readJson<{
+    name?: string
+    room?: string
+    passcode?: string
+  }>(request)
   const room = requireRoom(body?.room ?? '')
   if (room instanceof Response) return room
 
   const name = normalizeName(body?.name ?? '')
   if (name.length < 1) return error('請輸入名字')
+  const pin = requirePasscode(body?.passcode)
+  if (pin instanceof Response) return pin
+  const key = nameKey(name)
 
   const session = await loadRoom(env.DRAW_KV, room)
   if (!session) return error('找不到這個房間', 404)
-  const player = findByNameKey(session, nameKey(name))
-  if (!player) return error('找不到這個名字，請先註冊', 404)
-  return json(authPayload(session, player))
+  const existing = findByNameKey(session, key)
+  if (!existing) return error('找不到這個名字，請先註冊', 404)
+
+  const verified = await verifyPasscode(pin, existing.passcodeHash)
+  if (verified === 'mismatch') {
+    return error('通行碼錯誤', 401)
+  }
+
+  if (verified === 'set') {
+    const passcodeHash = await hashPasscode(pin)
+    const upgraded = await mutateRoom(env.DRAW_KV, room, (next) => {
+      const target = findByNameKey(next, key)
+      if (!target) {
+        return { ok: false, error: '找不到這個名字，請先註冊', status: 404 }
+      }
+      if (target.passcodeHash) {
+        return { ok: false, error: '通行碼錯誤', status: 401 }
+      }
+      target.passcodeHash = passcodeHash
+      target.token = crypto.randomUUID()
+      return { ok: true, session: next }
+    })
+    if (!upgraded.ok) return error(upgraded.error, upgraded.status)
+    const player = findByNameKey(upgraded.session, key)
+    if (!player) return error('登入失敗', 500)
+    return json(authPayload(upgraded.session, player))
+  }
+
+  return json(authPayload(session, existing))
 }
 
 async function handleMe(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'me', 180, 600)
+  if (limited) return limited
+
   const body = await readJson<{ token?: string; room?: string }>(request)
   const room = requireRoom(body?.room ?? '')
   if (room instanceof Response) return room
@@ -184,6 +293,9 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleDraw(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'draw', 60, 600)
+  if (limited) return limited
+
   const body = await readJson<{ token?: string; room?: string }>(request)
   const room = requireRoom(body?.room ?? '')
   if (room instanceof Response) return room
@@ -212,13 +324,15 @@ async function handleDraw(request: Request, env: Env): Promise<Response> {
   })
 
   if (!outcome.ok) return error(outcome.error, outcome.status)
-  const player =
-    drawnPlayer ?? findByToken(outcome.session, token)
+  const player = drawnPlayer ?? findByToken(outcome.session, token)
   if (!player) return error('抽籤失敗', 500)
   return json(authPayload(outcome.session, player))
 }
 
 async function handleReset(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'mutate', 40, 600)
+  if (limited) return limited
+
   const body = await readJson<{ token?: string; room?: string }>(request)
   const room = requireRoom(body?.room ?? '')
   if (room instanceof Response) return room
@@ -251,26 +365,10 @@ async function handleReset(request: Request, env: Env): Promise<Response> {
   return json(authPayload(outcome.session, player))
 }
 
-function reindexPlayers(session: SessionState): void {
-  session.players.sort((a, b) => a.id - b.id)
-  const hostToken =
-    session.hostPlayerId === null
-      ? null
-      : session.players.find((p) => p.id === session.hostPlayerId)?.token ?? null
-  session.players.forEach((p, i) => {
-    p.id = i
-  })
-  if (hostToken) {
-    const host = session.players.find((p) => p.token === hostToken)
-    session.hostPlayerId = host?.id ?? session.players[0]?.id ?? null
-  } else if (session.players[0]) {
-    session.hostPlayerId = session.players[0].id
-  } else {
-    session.hostPlayerId = null
-  }
-}
-
 async function handleUpdateJobs(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'mutate', 40, 600)
+  if (limited) return limited
+
   const body = await readJson<{ token?: string; room?: string; jobs?: unknown }>(
     request,
   )
@@ -318,6 +416,9 @@ async function handleUpdateJobs(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleKick(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'mutate', 40, 600)
+  if (limited) return limited
+
   const body = await readJson<{
     token?: string
     room?: string
@@ -328,6 +429,7 @@ async function handleKick(request: Request, env: Env): Promise<Response> {
   const token = body?.token?.trim() ?? ''
   if (!token) return error('未登入', 401)
   if (typeof body?.playerId !== 'number') return error('請指定要踢出的玩家')
+  const playerId = body.playerId
 
   const outcome = await mutateRoom(env.DRAW_KV, room, (session) => {
     const host = findByToken(session, token)
@@ -337,18 +439,12 @@ async function handleKick(request: Request, env: Env): Promise<Response> {
     if (session.hostPlayerId !== host.id) {
       return { ok: false, error: '只有房主可以踢人', status: 403 }
     }
-    if (body.playerId === host.id) {
-      return { ok: false, error: '不能踢出自己', status: 400 }
+    if (playerId === host.id) {
+      return { ok: false, error: '不能踢出自己，請改用「離開房間」', status: 400 }
     }
-    const target = session.players.find((p) => p.id === body.playerId)
-    if (!target) {
+    if (!removePlayer(session, playerId)) {
       return { ok: false, error: '找不到這位冒險者', status: 404 }
     }
-    if (target.job !== null) {
-      session.remainingJobs = [...session.remainingJobs, target.job]
-    }
-    session.players = session.players.filter((p) => p.id !== target.id)
-    reindexPlayers(session)
     return { ok: true, session }
   })
 
@@ -356,6 +452,34 @@ async function handleKick(request: Request, env: Env): Promise<Response> {
   const player = findByToken(outcome.session, token)
   if (!player) return error('踢出失敗', 500)
   return json(authPayload(outcome.session, player))
+}
+
+async function handleLeave(request: Request, env: Env): Promise<Response> {
+  const limited = await enforceRateLimit(request, env.DRAW_KV, 'mutate', 40, 600)
+  if (limited) return limited
+
+  const body = await readJson<{ token?: string; room?: string }>(request)
+  const room = requireRoom(body?.room ?? '')
+  if (room instanceof Response) return room
+  const token = body?.token?.trim() ?? ''
+  if (!token) return error('未登入', 401)
+
+  const outcome = await mutateRoom(env.DRAW_KV, room, (session) => {
+    const player = findByToken(session, token)
+    if (!player) {
+      return { ok: false, error: '登入已失效，請重新登入', status: 401 }
+    }
+    if (!removePlayer(session, player.id)) {
+      return { ok: false, error: '離開失敗', status: 500 }
+    }
+    return { ok: true, session }
+  })
+
+  if (!outcome.ok) return error(outcome.error, outcome.status)
+  return json({
+    ok: true as const,
+    session: toPublicSession(outcome.session),
+  })
 }
 
 export async function handleApiRequest(
@@ -403,6 +527,9 @@ export async function handleApiRequest(
     if (path === 'kick' && method === 'POST') {
       return await handleKick(request, env)
     }
+    if (path === 'leave' && method === 'POST') {
+      return await handleLeave(request, env)
+    }
     return error('找不到 API', 404)
   } catch (err) {
     console.error(err)
@@ -412,40 +539,30 @@ export async function handleApiRequest(
 
 /** In-memory multi-room store for local Vite middleware. */
 export function createMemoryEnv(): Env {
-  const rooms = new Map<string, SessionState>()
-  const locks = new Map<string, number>()
+  const data = new Map<string, { value: string; until?: number }>()
 
   const kv = {
     async get(key: string): Promise<string | null> {
-      if (key.endsWith(':lock') || key.includes(':lock')) {
-        const until = locks.get(key)
-        if (!until || until < Date.now()) {
-          locks.delete(key)
-          return null
-        }
-        return String(until)
+      const row = data.get(key)
+      if (!row) return null
+      if (row.until && row.until < Date.now()) {
+        data.delete(key)
+        return null
       }
-      // classic-job-draw:room:CODE:v3
-      const code = key.split(':')[2]
-      if (!code) return null
-      const session = rooms.get(code)
-      return session ? JSON.stringify(session) : null
+      return row.value
     },
     async put(
       key: string,
       value: string,
       options?: { expirationTtl?: number },
     ): Promise<void> {
-      if (key.endsWith(':lock') || key.includes(':lock')) {
-        const ttl = (options?.expirationTtl ?? 60) * 1000
-        locks.set(key, Date.now() + ttl)
-        return
-      }
-      const parsed = JSON.parse(value) as SessionState
-      rooms.set(parsed.roomCode, parsed)
+      const until = options?.expirationTtl
+        ? Date.now() + options.expirationTtl * 1000
+        : undefined
+      data.set(key, { value, until })
     },
     async delete(key: string): Promise<void> {
-      locks.delete(key)
+      data.delete(key)
     },
   }
 

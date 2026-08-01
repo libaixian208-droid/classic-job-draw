@@ -21,6 +21,8 @@ export default function App() {
     session,
     nameInput,
     setNameInput,
+    passcodeInput,
+    setPasscodeInput,
     roomInput,
     setRoomInput,
     selectedJobs,
@@ -116,6 +118,8 @@ export default function App() {
           <AuthPanel
             nameInput={nameInput}
             onNameChange={setNameInput}
+            passcodeInput={passcodeInput}
+            onPasscodeChange={setPasscodeInput}
             onRegister={() => {
               playClick()
               void handleRegister()
@@ -130,7 +134,7 @@ export default function App() {
             }}
             onLeaveRoom={() => {
               playClick()
-              leaveRoom()
+              void leaveRoom()
             }}
             onCopyRoomLink={() => {
               playClick()
@@ -156,6 +160,7 @@ export default function App() {
                 spinJob={spinJob}
                 onDraw={() => void draw()}
                 onLogout={logout}
+                onLeaveRoom={() => void leaveRoom()}
               />
 
               {session ? (

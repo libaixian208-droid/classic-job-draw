@@ -26,6 +26,8 @@ export interface StoredPlayer {
   nameKey: string
   job: Job | null
   token: string
+  /** SHA-256 hex of seat passcode; absent on legacy seats. */
+  passcodeHash?: string
 }
 
 export interface SessionState {
@@ -215,7 +217,8 @@ export function isValidSession(value: unknown): value is SessionState {
       typeof p.name !== 'string' ||
       typeof p.nameKey !== 'string' ||
       typeof p.token !== 'string' ||
-      !(p.job === null || isJob(p.job))
+      !(p.job === null || isJob(p.job)) ||
+      (p.passcodeHash !== undefined && typeof p.passcodeHash !== 'string')
     ) {
       return false
     }

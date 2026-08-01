@@ -121,13 +121,25 @@ export async function createRoom(
   kv: KVNamespace,
   selectedJobs: Job[],
 ): Promise<SessionState> {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const code = generateRoomCode()
-    const existing = await loadRoom(kv, code)
-    if (existing) continue
-    const session = createEmptySession(code, selectedJobs)
-    await saveRoom(kv, session)
-    return session
+    const lockKey = roomLockKey(code)
+    const existingLock = await kv.get(lockKey)
+    if (existingLock) continue
+    await kv.put(lockKey, String(Date.now()), { expirationTtl: 60 })
+    try {
+      const existing = await loadRoom(kv, code)
+      if (existing) continue
+      const session = createEmptySession(code, selectedJobs)
+      await saveRoom(kv, session)
+      return session
+    } finally {
+      try {
+        await kv.delete(lockKey)
+      } catch {
+        /* ignore */
+      }
+    }
   }
   throw new Error('無法建立房間，請稍後再試')
 }

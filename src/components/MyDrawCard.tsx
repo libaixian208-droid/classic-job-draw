@@ -8,6 +8,7 @@ interface MyDrawCardProps {
   spinJob: Job | null
   onDraw: () => void
   onLogout: () => void
+  onLeaveRoom: () => void
 }
 
 export function MyDrawCard({
@@ -16,6 +17,7 @@ export function MyDrawCard({
   spinJob,
   onDraw,
   onLogout,
+  onLeaveRoom,
 }: MyDrawCardProps) {
   const hasJob = me.job !== null
   const canDraw = !hasJob && !isDrawing
@@ -94,17 +96,30 @@ export function MyDrawCard({
         {hasJob ? '已抽籤' : isDrawing ? '命運轉動中…' : '✧職業命運'}
       </button>
 
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={() => {
-          playClick()
-          onLogout()
-        }}
-        disabled={isDrawing}
-      >
-        離開村莊
-      </button>
+      <div className="player-card__footer-actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => {
+            playClick()
+            onLogout()
+          }}
+          disabled={isDrawing}
+        >
+          切換帳號
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => {
+            playClick()
+            onLeaveRoom()
+          }}
+          disabled={isDrawing}
+        >
+          離開房間
+        </button>
+      </div>
     </article>
   )
 }

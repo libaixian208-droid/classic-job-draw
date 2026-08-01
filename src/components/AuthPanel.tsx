@@ -4,6 +4,8 @@ import type { PublicSession } from '../types'
 interface AuthPanelProps {
   nameInput: string
   onNameChange: (value: string) => void
+  passcodeInput: string
+  onPasscodeChange: (value: string) => void
   onRegister: () => void
   onLogin: () => void
   onEnterSubmit: () => void
@@ -19,6 +21,8 @@ interface AuthPanelProps {
 export function AuthPanel({
   nameInput,
   onNameChange,
+  passcodeInput,
+  onPasscodeChange,
   onRegister,
   onLogin,
   onEnterSubmit,
@@ -30,7 +34,8 @@ export function AuthPanel({
   error,
   session,
 }: AuthPanelProps) {
-  const canSubmit = nameInput.trim().length > 0 && !busy
+  const pinOk = /^\d{4,8}$/.test(passcodeInput)
+  const canSubmit = nameInput.trim().length > 0 && pinOk && !busy
   const full = (session?.registeredCount ?? 0) >= (session?.maxPlayers ?? 3)
   const revealed = session?.allDone ? session.results : null
 
@@ -41,7 +46,7 @@ export function AuthPanel({
         村莊冒險者登記處
       </h2>
       <p className="auth-panel__desc">
-        在這座小村莊登記你的冒險者名字。抽籤途中只見自己的命運，全員抽完後才會揭曉全貌。
+        用名字＋通行碼登記座位。抽籤途中只見自己的命運；「換房間」會釋出名額。
       </p>
 
       <div className="auth-panel__room">
@@ -87,6 +92,30 @@ export function AuthPanel({
             if (e.key === 'Enter' && canSubmit) onEnterSubmit()
           }}
         />
+      </div>
+
+      <div className="auth-panel__field">
+        <label htmlFor="adventurer-passcode">通行碼（4～8 位數字）</label>
+        <input
+          id="adventurer-passcode"
+          type="password"
+          inputMode="numeric"
+          className="player-card__input"
+          placeholder="例如：2580"
+          value={passcodeInput}
+          maxLength={8}
+          disabled={busy}
+          autoComplete="current-password"
+          onChange={(e) =>
+            onPasscodeChange(e.target.value.replace(/\D/g, '').slice(0, 8))
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canSubmit) onEnterSubmit()
+          }}
+        />
+        <p className="auth-panel__pin-hint">
+          註冊時設定；舊座位若尚未設通行碼，登入時輸入的數字會成為新通行碼。
+        </p>
       </div>
 
       {error ? (

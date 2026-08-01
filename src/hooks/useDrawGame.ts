@@ -30,6 +30,7 @@ export function useDrawGame() {
   const [me, setMe] = useState<PrivatePlayer | null>(null)
   const [session, setSession] = useState<PublicSession | null>(null)
   const [nameInput, setNameInput] = useState('')
+  const [passcodeInput, setPasscodeInput] = useState('')
   const [roomInput, setRoomInput] = useState('')
   const [selectedJobs, setSelectedJobs] = useState<Job[]>([...DEFAULT_JOBS])
   const [authBusy, setAuthBusy] = useState(false)
@@ -278,8 +279,17 @@ export function useDrawGame() {
     showToast('已進入觀戰')
   }, [roomCode, session, showToast])
 
-  const leaveRoom = useCallback(() => {
+  const leaveRoom = useCallback(async () => {
+    const code = roomCode
+    const authToken = token
     clearTimers()
+    if (code && authToken) {
+      try {
+        await api.leaveRoom(code, authToken)
+      } catch {
+        /* still clear local state */
+      }
+    }
     clearAuth()
     clearRoomFromUrl()
     setToken(null)
@@ -289,16 +299,22 @@ export function useDrawGame() {
     setDrawing(false)
     setSpinJob(null)
     setNameInput('')
+    setPasscodeInput('')
     setError(null)
     setPhase('lobby')
-  }, [clearTimers])
+    showToast('已離開房間並釋出名額')
+  }, [clearTimers, roomCode, token, showToast])
 
   const handleRegister = useCallback(async () => {
     if (!roomCode) return
+    if (!/^\d{4,8}$/.test(passcodeInput)) {
+      setError('通行碼須為 4～8 位數字')
+      return
+    }
     setAuthBusy(true)
     setError(null)
     try {
-      const res = await api.register(roomCode, nameInput)
+      const res = await api.register(roomCode, nameInput, passcodeInput)
       applyAuth(roomCode, res.token, res.me, res.session)
       showToast('註冊成功！')
     } catch (e) {
@@ -306,14 +322,18 @@ export function useDrawGame() {
     } finally {
       setAuthBusy(false)
     }
-  }, [roomCode, nameInput, applyAuth, showToast])
+  }, [roomCode, nameInput, passcodeInput, applyAuth, showToast])
 
   const handleLogin = useCallback(async () => {
     if (!roomCode) return
+    if (!/^\d{4,8}$/.test(passcodeInput)) {
+      setError('通行碼須為 4～8 位數字')
+      return
+    }
     setAuthBusy(true)
     setError(null)
     try {
-      const res = await api.login(roomCode, nameInput)
+      const res = await api.login(roomCode, nameInput, passcodeInput)
       applyAuth(roomCode, res.token, res.me, res.session)
       showToast(`歡迎回來，${res.me.name}！`)
     } catch (e) {
@@ -321,11 +341,15 @@ export function useDrawGame() {
     } finally {
       setAuthBusy(false)
     }
-  }, [roomCode, nameInput, applyAuth, showToast])
+  }, [roomCode, nameInput, passcodeInput, applyAuth, showToast])
 
   const handleAuthEnter = useCallback(() => {
     const trimmed = nameInput.trim()
     if (!trimmed || authBusy) return
+    if (!/^\d{4,8}$/.test(passcodeInput)) {
+      setError('通行碼須為 4～8 位數字')
+      return
+    }
     const key = trimmed.toLowerCase()
     const exists = session?.players.some(
       (p) => p.name.trim().toLowerCase() === key,
@@ -337,11 +361,11 @@ export function useDrawGame() {
     const full =
       (session?.registeredCount ?? 0) >= (session?.maxPlayers ?? 3)
     if (full) {
-      setError('隊伍已滿；若你已註冊，請用相同名字登入，或改為觀戰')
+      setError('隊伍已滿；若你已註冊，請用相同名字與通行碼登入，或改為觀戰')
       return
     }
     void handleRegister()
-  }, [nameInput, authBusy, session, handleLogin, handleRegister])
+  }, [nameInput, passcodeInput, authBusy, session, handleLogin, handleRegister])
 
   const logout = useCallback(() => {
     clearTimers()
@@ -355,7 +379,8 @@ export function useDrawGame() {
       writeRoomToUrl(roomCode, false)
       void refreshPublic(roomCode)
     }
-  }, [clearTimers, refreshPublic, roomCode])
+    showToast('已切換帳號（座位仍保留）')
+  }, [clearTimers, refreshPublic, roomCode, showToast])
 
   const draw = useCallback(async () => {
     if (!token || !roomCode || !me || me.job !== null || drawing) return
@@ -540,6 +565,8 @@ export function useDrawGame() {
     session,
     nameInput,
     setNameInput,
+    passcodeInput,
+    setPasscodeInput,
     roomInput,
     setRoomInput,
     selectedJobs,

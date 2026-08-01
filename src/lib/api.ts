@@ -6,6 +6,11 @@ import type {
   SessionResponse,
 } from '../types'
 
+export interface LeaveResponse {
+  ok: true
+  session: SessionResponse['session']
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -18,7 +23,9 @@ async function parse<T>(res: Response): Promise<T> {
     throw new Error(
       res.status >= 500
         ? '伺服器忙碌或離線，請稍後再試'
-        : '回應格式錯誤，請稍後再試',
+        : res.status === 429
+          ? '請求過於頻繁，請稍後再試'
+          : '回應格式錯誤，請稍後再試',
     )
   }
   if (
@@ -28,9 +35,11 @@ async function parse<T>(res: Response): Promise<T> {
     const message =
       typeof data === 'object' && data && 'error' in data
         ? String((data as ApiError).error)
-        : res.status >= 500
-          ? '伺服器忙碌或離線，請稍後再試'
-          : '請求失敗'
+        : res.status === 429
+          ? '請求過於頻繁，請稍後再試'
+          : res.status >= 500
+            ? '伺服器忙碌或離線，請稍後再試'
+            : '請求失敗'
     throw new Error(message)
   }
   return data as T
@@ -45,6 +54,9 @@ async function requestJson<T>(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(input, init)
+      if (res.status === 429) {
+        return await parse<T>(res)
+      }
       if (res.status >= 500 && attempt < retries) {
         await sleep(300 * (attempt + 1))
         continue
@@ -81,19 +93,24 @@ export async function fetchSession(room: string): Promise<SessionResponse> {
 export async function register(
   room: string,
   name: string,
+  passcode: string,
 ): Promise<AuthResponse> {
   return requestJson<AuthResponse>('/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room, name }),
+    body: JSON.stringify({ room, name, passcode }),
   })
 }
 
-export async function login(room: string, name: string): Promise<AuthResponse> {
+export async function login(
+  room: string,
+  name: string,
+  passcode: string,
+): Promise<AuthResponse> {
   return requestJson<AuthResponse>('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room, name }),
+    body: JSON.stringify({ room, name, passcode }),
   })
 }
 
@@ -148,5 +165,16 @@ export async function kickPlayer(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ room, token, playerId }),
+  })
+}
+
+export async function leaveRoom(
+  room: string,
+  token: string,
+): Promise<LeaveResponse> {
+  return requestJson<LeaveResponse>('/api/leave', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room, token }),
   })
 }
