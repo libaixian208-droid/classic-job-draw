@@ -19,11 +19,18 @@ export interface SessionState {
   updatedAt: string
 }
 
-/** Public roster entry — never includes job. */
+/** Public roster entry — job only included after everyone has drawn. */
 export interface PublicPlayer {
   id: PlayerId
   name: string
   hasDrawn: boolean
+  job: Job | null
+}
+
+export interface RevealedResult {
+  id: PlayerId
+  name: string
+  job: Job
 }
 
 export interface PublicSession {
@@ -32,6 +39,8 @@ export interface PublicSession {
   drawnCount: number
   allDone: boolean
   players: PublicPlayer[]
+  /** Full results — only present when allDone. */
+  results: RevealedResult[] | null
 }
 
 export interface PrivatePlayerView {
@@ -58,20 +67,32 @@ export function nameKey(name: string): string {
 }
 
 export function toPublicSession(session: SessionState): PublicSession {
+  const allDone =
+    session.players.length === 3 &&
+    session.players.every((p) => p.job !== null)
+
   return {
     registeredCount: session.players.length,
     maxPlayers: 3,
     drawnCount: session.players.filter((p) => p.job !== null).length,
-    allDone:
-      session.players.length === 3 &&
-      session.players.every((p) => p.job !== null),
+    allDone,
     players: session.players.map((p) => ({
       id: p.id,
       name: p.name,
       hasDrawn: p.job !== null,
+      // Hide jobs until everyone is done.
+      job: allDone ? p.job : null,
     })),
+    results: allDone
+      ? session.players.map((p) => ({
+          id: p.id,
+          name: p.name,
+          job: p.job as Job,
+        }))
+      : null,
   }
 }
+
 
 export function toPrivatePlayer(player: StoredPlayer): PrivatePlayerView {
   return {

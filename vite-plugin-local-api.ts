@@ -25,18 +25,28 @@ function normalizeName(name: string): string {
 }
 
 function toPublic(session: Session) {
+  const allDone =
+    session.players.length === 3 &&
+    session.players.every((p) => p.job !== null)
+
   return {
     registeredCount: session.players.length,
     maxPlayers: 3,
     drawnCount: session.players.filter((p) => p.job !== null).length,
-    allDone:
-      session.players.length === 3 &&
-      session.players.every((p) => p.job !== null),
+    allDone,
     players: session.players.map((p) => ({
       id: p.id,
       name: p.name,
       hasDrawn: p.job !== null,
+      job: allDone ? p.job : null,
     })),
+    results: allDone
+      ? session.players.map((p) => ({
+          id: p.id,
+          name: p.name,
+          job: p.job as Job,
+        }))
+      : null,
   }
 }
 

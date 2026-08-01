@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../lib/api'
-import { buildSpinFrames, formatOwnResultText } from '../lib/jobs'
+import { buildSpinFrames, formatFullResultsText, formatOwnResultText } from '../lib/jobs'
 import { clearAuth, loadAuth, saveAuth } from '../lib/storage'
 import type { Job, PrivatePlayer, PublicSession } from '../types'
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
@@ -98,9 +98,11 @@ export function useDrawGame() {
     }
   }, [applyAuth])
 
-  // Soft-refresh roster while logged in (so you see others join/draw status).
+  // Soft-refresh while logged in; poll faster while waiting for full reveal.
   useEffect(() => {
     if (phase !== 'ready' || !token) return
+    const waitingReveal = Boolean(me?.job) && !session?.allDone
+    const intervalMs = waitingReveal ? 3000 : 8000
     const id = window.setInterval(() => {
       void api
         .fetchMe(token)
@@ -111,9 +113,9 @@ export function useDrawGame() {
         .catch(() => {
           /* ignore transient errors */
         })
-    }, 8000)
+    }, intervalMs)
     return () => window.clearInterval(id)
-  }, [phase, token])
+  }, [phase, token, me?.job, session?.allDone])
 
   const handleRegister = useCallback(async () => {
     setAuthBusy(true)
@@ -215,7 +217,10 @@ export function useDrawGame() {
 
   const copyResults = useCallback(async () => {
     if (!me?.job) return
-    const text = formatOwnResultText(me.name, me.job)
+    const text =
+      session?.allDone && session.results && session.results.length > 0
+        ? formatFullResultsText(session.results)
+        : formatOwnResultText(me.name, me.job)
     try {
       await navigator.clipboard.writeText(text)
       showToast('結果已複製！')
@@ -236,7 +241,7 @@ export function useDrawGame() {
         document.body.removeChild(textarea)
       }
     }
-  }, [me, showToast])
+  }, [me, session, showToast])
 
   return {
     phase,

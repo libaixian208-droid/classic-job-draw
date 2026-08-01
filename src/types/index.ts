@@ -16,6 +16,13 @@ export interface PublicPlayer {
   id: PlayerId
   name: string
   hasDrawn: boolean
+  job: Job | null
+}
+
+export interface RevealedResult {
+  id: PlayerId
+  name: string
+  job: Job
 }
 
 export interface PublicSession {
@@ -24,6 +31,7 @@ export interface PublicSession {
   drawnCount: number
   allDone: boolean
   players: PublicPlayer[]
+  results: RevealedResult[] | null
 }
 
 export interface PrivatePlayer {

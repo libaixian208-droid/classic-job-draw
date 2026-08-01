@@ -63,3 +63,11 @@ export function buildSpinFrames(
 export function formatOwnResultText(name: string, job: Job): string {
   return ['新楓之谷經典服職業抽籤結果', '', `${name}：${job}`].join('\n')
 }
+
+export function formatFullResultsText(
+  results: { name: string; job: Job }[],
+): string {
+  const lines = results.map((r) => `${r.name}：${r.job}`)
+  return ['新楓之谷經典服職業抽籤結果', '', ...lines].join('\n')
+}
+

@@ -1,3 +1,6 @@
+import { JOB_STYLES } from '../lib/jobs'
+import type { PublicSession } from '../types'
+
 interface AuthPanelProps {
   nameInput: string
   onNameChange: (value: string) => void
@@ -5,11 +8,7 @@ interface AuthPanelProps {
   onLogin: () => void
   busy: boolean
   error: string | null
-  session: {
-    registeredCount: number
-    maxPlayers: number
-    players: { id: number; name: string; hasDrawn: boolean }[]
-  } | null
+  session: PublicSession | null
 }
 
 export function AuthPanel({
@@ -23,6 +22,7 @@ export function AuthPanel({
 }: AuthPanelProps) {
   const canSubmit = nameInput.trim().length > 0 && !busy
   const full = (session?.registeredCount ?? 0) >= (session?.maxPlayers ?? 3)
+  const revealed = session?.allDone ? session.results : null
 
   return (
     <section className="auth-panel" aria-labelledby="auth-heading">
@@ -30,7 +30,7 @@ export function AuthPanel({
         冒險者登記
       </h2>
       <p className="auth-panel__desc">
-        輸入名字註冊或登入。每位冒險者只能看到自己的職業命運。
+        輸入名字註冊或登入。抽籤過程中只能看到自己的結果，三人全部抽完後會公布。
       </p>
 
       <div className="auth-panel__field">
@@ -81,8 +81,23 @@ export function AuthPanel({
       </div>
 
       <div className="auth-panel__roster">
-        <h3 className="auth-panel__roster-title">目前冒險者</h3>
-        {session && session.players.length > 0 ? (
+        <h3 className="auth-panel__roster-title">
+          {revealed ? '命運揭曉！' : '目前冒險者'}
+        </h3>
+        {revealed && revealed.length > 0 ? (
+          <ul className="auth-panel__list">
+            {revealed.map((r) => (
+              <li key={r.id}>
+                <span>
+                  {JOB_STYLES[r.job].emoji} {r.name}
+                </span>
+                <span className="auth-panel__status" style={{ color: JOB_STYLES[r.job].accent }}>
+                  {r.job}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : session && session.players.length > 0 ? (
           <ul className="auth-panel__list">
             {session.players.map((p) => (
               <li key={p.id}>
@@ -98,7 +113,9 @@ export function AuthPanel({
         )}
         <p className="auth-panel__slots">
           {session
-            ? `${session.registeredCount} / ${session.maxPlayers} 人已加入`
+            ? revealed
+              ? '本輪抽籤已全部完成'
+              : `${session.registeredCount} / ${session.maxPlayers} 人已加入`
             : '讀取中…'}
         </p>
       </div>

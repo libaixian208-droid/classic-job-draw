@@ -93,19 +93,23 @@ export default function App() {
                           {p.id === me.id ? '（你）' : ''}
                         </span>
                         <span>
-                          {p.id === me.id
-                            ? me.job
-                              ? '已揭曉'
-                              : '尚未抽籤'
-                            : p.hasDrawn
-                              ? '已抽籤'
-                              : '命運尚未揭曉'}
+                          {session.allDone && p.job
+                            ? p.job
+                            : p.id === me.id
+                              ? me.job
+                                ? '已揭曉'
+                                : '尚未抽籤'
+                              : p.hasDrawn
+                                ? '已抽籤'
+                                : '命運尚未揭曉'}
                         </span>
                       </li>
                     ))}
                   </ul>
                   <p className="roster-side__hint">
-                    其他人的職業結果不會顯示，避免劇透。
+                    {session.allDone
+                      ? '三人皆已抽完，完整命運已公布。'
+                      : '抽籤進行中不會顯示其他人的職業；全部抽完後才公布。'}
                   </p>
                 </aside>
               ) : null}
@@ -127,6 +131,7 @@ export default function App() {
                     drawnCount: 1,
                     allDone: false,
                     players: [],
+                    results: null,
                   }
                 }
                 onCopy={() => void copyResults()}
