@@ -12,6 +12,7 @@ import {
 } from '../lib/skillGuides'
 import { playClick } from '../lib/sfx'
 import type { Job } from '../types'
+import { MustQuestPanel } from './MustQuestPanel'
 
 const LEVEL_STORAGE_KEY = 'classic-job-draw:player-level:v1'
 
@@ -341,7 +342,7 @@ export function SkillGuidePanel({
 }
 
 interface SkillGuideBookProps {
-  focusJob: Job
+  focusJob?: Job
   poolJobs?: Job[]
   showAll?: boolean
 }
@@ -351,7 +352,9 @@ export function SkillGuideBook({
   poolJobs,
   showAll = false,
 }: SkillGuideBookProps) {
-  const others = (poolJobs ?? [focusJob]).filter((j) => j !== focusJob)
+  const others = focusJob
+    ? (poolJobs ?? [focusJob]).filter((j) => j !== focusJob)
+    : []
   const [levelInput, setLevelInput] = useState(loadStoredLevel)
   const [onlyCurrentLevel, setOnlyCurrentLevel] = useState(false)
   const currentLevel = clampPlayerLevel(levelInput)
@@ -389,8 +392,8 @@ export function SkillGuideBook({
           ) : (
             <span className="skill-guide-book__level-hint">
               {currentLevel
-                ? `已依 Lv.${currentLevel} 標出加點與練功建議`
-                : '輸入後會標出目前該練哪一段'}
+                ? `已依 Lv.${currentLevel} 標出任務／加點／練功`
+                : '輸入後會標出目前該解的任務與練功段'}
             </span>
           )}
         </div>
@@ -408,14 +411,22 @@ export function SkillGuideBook({
         </label>
       </div>
 
-      <SkillGuidePanel
-        job={focusJob}
-        defaultOpen
-        showServerRules
+      <MustQuestPanel
         currentLevel={currentLevel}
         onlyCurrentLevel={onlyCurrentLevel}
+        defaultOpen
       />
-      {showAll
+
+      {focusJob ? (
+        <SkillGuidePanel
+          job={focusJob}
+          defaultOpen
+          showServerRules
+          currentLevel={currentLevel}
+          onlyCurrentLevel={onlyCurrentLevel}
+        />
+      ) : null}
+      {focusJob && showAll
         ? others.map((job) => (
             <SkillGuidePanel
               key={job}

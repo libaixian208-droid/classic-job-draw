@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { AdventureBackdrop } from './components/AdventureBackdrop'
 import { AuthPanel } from './components/AuthPanel'
 import { Celebration } from './components/Celebration'
@@ -12,6 +13,12 @@ import { Toast } from './components/Toast'
 import { WatchPanel } from './components/WatchPanel'
 import { useDrawGame } from './hooks/useDrawGame'
 import { playClick } from './lib/sfx'
+
+const SkillGuideBook = lazy(() =>
+  import('./components/SkillGuidePanel').then((m) => ({
+    default: m.SkillGuideBook,
+  })),
+)
 
 export default function App() {
   const {
@@ -265,20 +272,31 @@ export default function App() {
                 canReset={isHost}
               />
             ) : (
-              <div className="toolbar">
-                {isHost ? (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={requestReset}
-                    disabled={drawing}
-                  >
-                    重新抽籤
-                  </button>
-                ) : (
-                  <p className="result-panel__host-hint">只有房主可以重新抽籤</p>
-                )}
-              </div>
+              <>
+                <div className="toolbar">
+                  {isHost ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={requestReset}
+                      disabled={drawing}
+                    >
+                      重新抽籤
+                    </button>
+                  ) : (
+                    <p className="result-panel__host-hint">只有房主可以重新抽籤</p>
+                  )}
+                </div>
+                <Suspense
+                  fallback={
+                    <p className="loading-msg" role="status">
+                      載入必解任務…
+                    </p>
+                  }
+                >
+                  <SkillGuideBook />
+                </Suspense>
+              </>
             )}
           </>
         ) : null}
